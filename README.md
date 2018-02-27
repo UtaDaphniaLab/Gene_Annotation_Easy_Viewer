@@ -37,3 +37,6 @@ An example output file can be found in the kegg_annotation_easy_viewer folder. I
 ## Authors
 **Trung Huynh** - *Initial work on code*  
 **Sen Xu** - *Conceptualization*
+
+## License
+This project is licensed under the MIT license and is available for free. 
