@@ -240,7 +240,7 @@ def gen_pathway(trimmed_file = None, data_file = None):
     try:  # trys to open data file
         with open(data_file, "rb") as f:
             if pickle.load(f):  # checks if the data is complete or not
-                sys.exit("A completed data file for " + data_name + " dataset already exist. Please rename or delete" + data_name + " if you wish to work with a rerun dataset.")  # if data is already complete, do not run rest of code
+                sys.exit("A completed data file for " + data_name + " dataset already exist. Please rename or delete " + data_name + " if you wish to work with a rerun dataset.")  # if data is already complete, do not run rest of code
             else:  # if data is not complete, load the data
                 num_already_saved = pickle.load(f)  # record where the data left off at
                 for _ in range(num_already_saved):  # loads all gene data into geneList
@@ -582,17 +582,22 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                                  Please enter either the relative or absolute path to the input file below"""))
         input_file = input()  # accepts user specified path to input file and stores as string in input_file
         set_input(input_file)  # uses user specified path to set paths and file names the code will use
-        print(textwrap.dedent("""
-                                 Trimming input file"""))  # status update
-        trim_unannotated()  # trim the data file of genes that are not associated with a KO number
-        print(textwrap.dedent("""
-                                 Trimming input file (complete)
-                                 
-                                 Extracting data from KEGG"""))  #status update
-        gen_pathway()  # accesses KEGG API to extract information on genes and pathways associated with input KO#s
+        if ntpath.isfile(_input_file):  # checks if the file specified by the user exists
+            print(textwrap.dedent("""
+                                     Trimming input file"""))  # status update
+            trim_unannotated()  # trim the data file of genes that are not associated with a KO number
+            print(textwrap.dedent("""
+                                     Trimming input file (complete)
+                                     
+                                     Extracting data from KEGG"""))  #status update
+            gen_pathway()  # accesses KEGG API to extract information on genes and pathways associated with input KO#s
+            load_data()  # loads data from newly generated data file to populate _gene_list and _pathway_list
 
-        print(textwrap.dedent("""Extracting data from KEGG (complete)"""))  # status update
-        self.menu_filters()
+            print(textwrap.dedent("""Extracting data from KEGG (complete)"""))  # status update
+            self.menu_filters()
+        else:  # if file could not be found, then re-prompt for input file location
+            print(_input_file + " was not found")
+            self.menu_data_new()
 
     def menu_data_existing(self):  # does not extract any info from KEGG, but uses pre-generated data file
         print(textwrap.dedent("""
