@@ -1,10 +1,21 @@
 ############ Imports ############
+import ntpath  # needed to retrieve absolute path
 import contextlib  # the closing context manager will ensure connection to url is closed after with statement
+import textwrap  # used when printing UI in order to remove common leading indents
 from urllib.request import urlopen  # import the tools we need to open url
 import bisect  # module needed to insert an item into a sorted list
 import pickle  # needed to save and load data
 import sys  # needed to exit out of program when error is encountered
 import re  # required to split files without removing delimiter
+
+############ Variables ############
+_input_file = "No_File_Specified"  # will store path of the input file
+_trimmed_file = "No_File_Specified"  # will store path of the trimmed input file with genes not associated with KO# removed
+_data_file = "No_File_Specified" # will store path to the data file code will generate
+_html_file = "No_File_Specified" # will store path to the html file that will display the data
+_pathway_list = []  # will store pathway list loaded from data file
+_gene_list = []  # will store gene list loaded from data file
+_total_genes = 0  # will store the total number of genes when unfiltered
 
 ############ Classes and Functions ############
 def decode_url(urlLink):  # converts HTML response into String (allows program to read webpages)
@@ -17,7 +28,8 @@ def decode_url(urlLink):  # converts HTML response into String (allows program t
         return decoded_html  # returns the decoded html as String
 
 def save(geneList, pathwayList, completed):
-    with open("PathGeneData.dat", "wb") as f:  # create a file to save/pickle data
+    global _data_file  # sets local _data_file to global _data_file
+    with open(_data_file, "wb") as f:  # create a file to save/pickle data
         pickle.dump(completed, f)
         pickle.dump(len(geneList), f)  # store the amount of data entries for genes
         for gene in geneList:  # loops through and store all all data in geneList
@@ -30,6 +42,63 @@ def save(geneList, pathwayList, completed):
 def separate_file(path):  # accepts path as string and separates the file name ['C:/ExampleFolder/', 'FileName']
     path_list = re.split("(/)", path)  # separates the string at every "/" while keeping the delimiter
     return [path_list[:-1],path_list[-1]]  # returns list with all the path without file name and file name
+
+def get_file_name(path):  # returns the file new from input path (should work on all operating system)
+    head, tail = ntpath.split(path)  # splits path into directory (head) and file name (tail)
+    file_name = tail or ntpath.basename(head)  # if path ended in slash (a\b\c\) will use 'basename()' to get file name
+    file_no_ext, ext = ntpath.splitext(file_name)  # will separate ext from file name
+    return file_name, file_no_ext  # will return a tuple of file name with ext followed by file name without ext
+
+def set_input(path):  # used to set the paths of input file, trimmed file, and data file based on input file path
+    global _input_file  # sets local _input_file to global _input_file
+    global _trimmed_file  # sets local _trimmed_file to global _trimmed_file
+    global _data_file  # sets local _data_file to global _data_file
+    _input_file = ntpath.abspath(path)  # handles distinction between relative and abs path by converting all to abs path
+    file_dir = ntpath.dirname(_input_file)
+    file_name, file_no_ext = get_file_name(_input_file)  # gets file name (w/ and w/o ext) without the directory  path
+    _trimmed_file = ntpath.join(file_dir, "trimmed_" + file_name)  # create path for trimmed file with dir and file name
+    _data_file = ntpath.join(file_dir, file_no_ext + ".dat")  # create path for data file with ".dat" extension
+    set_data_file()  # with no argument passed, functions will just store a path to html using the stored _data_file
+
+
+def set_data_file(data_file = None):  # will specify path to data file to be used and path of output html file
+    global _data_file  # sets local _data_file to global _data_file
+    global _html_file  # sets local _html_file to global _html_file
+
+    if data_file == None:  # if a path to the data_file was not specify,
+        data_file = _data_file  # use the path that was most recently stored
+    else:  # if a path was specified,
+        data_file = ntpath.abspath(data_file)  # obtains the absolute path to the specified data file
+        _data_file = data_file  # then store it as the global _data_file path
+        global _trimmed_file  # sets local _trimmed_file to global _trimmed_file
+        global _input_file  # sets local _input_file to global _input_file
+        _input_file = "No_File_Specified"  # (1/2)  delete the global _input_file and the _trimmed_file path to avoid
+        _trimmed_file = "No_File_Specified"  # (2/2) overriding the data file with the wrong dataset
+
+    name_no_ext, ext = ntpath.splitext(data_file)  # stores file name w/o ext in name_no_ext and the extension in ext
+    _html_file = ntpath.join(ntpath.dirname(data_file),  name_no_ext + ".html")  # creates path to html file
+
+def load_data(data_file = None):  # will load data from data file into _gene_list and _pathway_list
+    global _data_file  # sets local _data_file to global _data_file
+    global _pathway_list  # sets local _pathway_list to global _pathway_list
+    global _gene_list  # sets local _gene_list to global _gene_list
+    global _total_genes  # sets local _total_genes to global _gene_list
+
+    del _pathway_list[:]  # clears _pathway_list to prevent appending one data set onto another
+    del _gene_list[:]  # clears _gene_list to prevent appending one data set onto another
+
+    if data_file == None:  # if a path to the data_file was not specify,
+        data_file = _data_file # use the path that was most recently stored
+    with open(data_file, "rb") as f:  # open data file that was generated previously
+        if not pickle.load(f):  # reads the first line of saved data which tells whether it is complete or not
+            sys.exit("Data is not complete")  # exits program if data is not complete
+
+        for _ in range(pickle.load(f)):  # reads line that tells program how many data entries there are in genes
+            _gene_list.append(pickle.load(f))  # loads data into _gene_list
+        for _ in range(pickle.load(f)):  # reads line that tells program how many data entries there are in pathways
+            _pathway_list.append(pickle.load(f))  # loads data into _pathway_list
+
+    _total_genes = len(_gene_list)
 
 class Pathway_MAP:  # class for pathway map objects
     def __init__(self, ipathway_info):  # accepts the map code of the pathway
@@ -48,6 +117,12 @@ class Pathway_MAP:  # class for pathway map objects
             self.url = self.url + k_code + "+%23bfffbf%0d%0a"  # adds gene's k_code to the end of the url and specifies color
         self.url = self.url + ik_code + "+%238B0000,%23F0F8FF"  # adds the selected gene and marks it with a different color
         return self.url
+
+    def check_genes(self, gene_list):  # checks if any associated genes is in the current filtered gene list
+        k_code = [gene.k_code for gene in gene_list]  # extracts k-codes from list of gene objects into their own list
+        is_there = bool(set(self.genes_invol) & set(k_code))  # tests for common items between genes_invol and k_code
+        return is_there
+
 
 class Gene:  # class for gene objects
     def __init__(self,ig_num, ik_code):  # accepts the gene number and the KEGG's k code for the gene
@@ -90,30 +165,70 @@ class Gene:  # class for gene objects
         infoList.append(linkPathList)  # add linkPathList to infoList
         return infoList  # finally return infoList [NAME, DEFINITION, [map_code map_name, map_code map_name, ...]]
 
-############ Trims Raw Input File ############
-def trim_unannotated():
-    input_file = input("Path to input file: ")  # ask user for absolute or relative path to input file
-    try:
-        with open(input_file, 'rU') as gene_list:  # opens specified path of input file to read
-            in_file_sep = separate_file(input_file)  # will separate the file name from rest of the path
-            if in_file_sep[0]:   # simply adds "trimmed_" in front of old name for new file
-                output_file_name = str(in_file_sep[0]) + "trimemed_" + str(in_file_sep[1])  # use for absolute path
-            else:
-                output_file_name = "trimmed_" + str(in_file_sep[1])  # use for relative path
-            with open(output_file_name, 'w+') as output_file:  # creates a new trimmed file write in
-                CurrGene = []  # makes a list to store the current gene the program is examining
+    # searches name to check if target term is in the name
+    def check_name(self, target):
+        is_there = False  # boolean to check if target term is in name
+        name = self.name
+        if target.lower() in name.lower():  # checks if name contains target term
+            is_there = True
+        return is_there
 
+    # searches definition to check if target term is in the definition
+    def check_definition(self, target):
+        is_there = False  # boolean to check if target term is in definition
+        definition = self.definition
+        if target.lower() in definition.lower():  # checks if definition contains target term
+            is_there = True
+        return is_there
+
+    #  searches linked pathways to see if it includes the target term
+    def check_pathway(self, target, pathway_list):
+        is_there = False  # boolean to check if target term is in linked pathways
+        for m_code in self.link_path:  # cycles through every linked pathway in gene
+            # each element in link_path is ['map_code map_name'], so m_code needs to be split from name
+            pathway = next(temp_pathway for temp_pathway in pathway_list if
+                           temp_pathway.map_code == m_code.split(' ',1)[0])  # finds pathway that matches map code
+            pathway_name = pathway.name  # stores name of pathway into variable pathway_name
+            if target.lower() in pathway_name.lower():  # checks if pathway name matches target name
+                    is_there = True
+                    break
+        return is_there
+
+
+############ Trims Raw Input File ############
+def trim_unannotated(path = None):
+    global _input_file
+    if path == None:  # if no path is passed to the function
+        path = _input_file  # then use the input file path that was previously stored
+    if path != _input_file:  # if the input path was different than the _input_file path set
+        set_input(path)  # set the new _input_file path and trimmed_file path according to specified path
+    try:
+        with open(path, 'rU') as gene_list:  # opens specified path of input file to read
+            with open(_trimmed_file, 'w+') as output_file:  # creates a new trimmed file write in
                 for line in gene_list:
                     CurrGene = line.split()
                     if len(CurrGene) == 2:  # only writes genes that have an ascension number assigned to it
                         output_file.write(line)
             output_file.close()
     except FileNotFoundError:  # if the computer cannot find the path the user specified
-        sys.exit("No file found at \"" + input_file + "\"")  # exit the program with error message
-    return output_file_name
+        sys.exit("No input file found at " + path)  # exit the program with error message
 
 ############ Generate Pathway Map List ############
-def gen_pathway(trimmed_input_file):
+def gen_pathway(trimmed_file = None, data_file = None):
+    global _trimmed_file  # sets local _trimmed_file to global _trimmed_file to use pathway set previously
+    global _data_file  # sets local _data_file to global _trimmed_file to use pathway set previously
+    if trimmed_file == None:  # if no path to trimmed file is specified,
+        trimmed_file = _trimmed_file  # the function will retrieve the trimmed file path that was most recently stored
+    if data_file == None:  # if no path to data file is specified,
+        if _data_file == "No_File_Specified":  # if _data_file was never set via set_input() or set_data_file(),
+            sys.exit("No data file was ever specified.")  # then exit the code with the following msg
+        else:
+            data_file = _data_file  # the function will retrieve the data file path that was most recently stored
+    data_name = ntpath.basename(data_file)  # gets the name of the data file without directory and sets to data_name
+
+    if not ntpath.isfile(trimmed_file):  # before running rest of code, checks if the trimmed input file exist
+        sys.exit("No trimmed input file found at " + trimmed_file)  # if it doesn't exist,exit the program with msg
+
     pathwayList = []  # creates an empty list to store all the pathways the annotated genes are involved in
     geneList = []  # creates an empty list to store all the annotated genes and their linked pathways
     completed = False  # records whether program has run to completion or not.
@@ -122,21 +237,20 @@ def gen_pathway(trimmed_input_file):
 
     n = 0  # integer to track which gene the code is on
 
-    try:  # trys to open PathGeneData.dat
-        with open("PathGeneData.dat", "rb") as f:
+    try:  # trys to open data file
+        with open(data_file, "rb") as f:
             if pickle.load(f):  # checks if the data is complete or not
-                sys.exit("A completed data file already exist. Please rename PathGeneData.dat if you wish to work with a different dataset.")  # if data is already complete, do not run rest of code
+                sys.exit("A completed data file for " + data_name + " dataset already exist. Please rename or delete" + data_name + " if you wish to work with a rerun dataset.")  # if data is already complete, do not run rest of code
             else:  # if data is not complete, load the data
                 num_already_saved = pickle.load(f)  # record where the data left off at
                 for _ in range(num_already_saved):  # loads all gene data into geneList
                     geneList.append(pickle.load(f))
                 for _ in range(pickle.load(f)):  # loads all pathway data into pathwayList
                     pathwayList.append(pickle.load(f))
-        f.closed
     except IOError:
-        print("New PathGeneData.dat will be created.")
+        print("New " + data_name + " will be created.")
 
-    with open(trimmed_input_file, 'r') as annotated_genes: #opens the trimed gene list file
+    with open(trimmed_file, 'r') as annotated_genes: #opens the trimmed gene list file
         for line in annotated_genes: #iterates through each line of the file
             n = n+1  # for each line, n increases by one to represent it is working on the next code
             print(n)  # print out the number of the gene code is currently working on
@@ -174,20 +288,22 @@ def gen_pathway(trimmed_input_file):
     save(geneList,pathwayList, completed)  # saves data to file
 
 ############ Generate HTML Output File ############
-def out_HTML():
-    geneList = []  # store data of genes in this List
-    pathwayList = []  # store pathway data in this List
+def out_HTML(data_file = None, html_file = None, gene_table = True, pathway_table = True):
+    global _html_file  # sets local _html_file to the global _html_file
+    global _data_file  # sets local _data_file to the global _data_file
+    if data_file == None:  # if no path to data file is passed, then
+        data_file = _data_file  # then use the data file path that was previously stored
+    else:
+        set_data_file(data_file)  # if an argument is passed then, set the _data_file and _html_file paths using argument
+    if html_file == None:  # if user does not specify name of html file, then
+        html_file = _html_file  # set local html file to the global _html_file
 
-    with open("PathGeneData.dat", "rb") as f:  # open data file that was generated previously
-        if not pickle.load(f):  # reads the first line of saved data which tells whether it is complete or not
-            sys.exit("Data is not complete")  # exits program if data is not complete
+    geneList = _gene_list  # store data of genes in this List
+    pathwayList = _pathway_list  # store pathway data in this List
 
-        for _ in range(pickle.load(f)):  # reads line that tells program how many data entries there are in genes
-            geneList.append(pickle.load(f))  # loads data into geneList
-        for _ in range(pickle.load(f)):  # reads line that tells program how many data entries there are in pathways
-            pathwayList.append(pickle.load(f))  # loads data into pathwayList
+    print("Generating Tables . . . ")  # status update for when program is generating html file
 
-    with open("Annotated Gene Pathways.html", "w") as f:
+    with open(html_file, "w") as f:
         html_code = """<html>
         <head>
         <style>
@@ -325,7 +441,10 @@ def out_HTML():
         </style>
         </head>
         <body>
-        <body link="#003366">
+        <body link="#003366">"""
+
+        if gene_table:  # if true, includes table for genes
+            html_code = html_code + """
     	<div class="scrollingtable">
     		<div>
     			<div>
@@ -333,6 +452,7 @@ def out_HTML():
     					<caption>Genes and Linked Pathway</caption>
     					<thead>
     						<tr>
+    			<th><div label="Gene ID"></div></th>
                 <th><div label="Gene Name"></div></th>
                 <th><div label="K Number"></div></th>
                 <th><div label="Definition"></div></th>
@@ -345,29 +465,33 @@ def out_HTML():
     					</thead>
     					<tbody>
                             """
-        for gene in geneList:  # cycles through even gene; one gene each row
-            # adds the gene number, k number, and definition to first three columns
-            row = "<tr><td>" + gene.name + "</td><td>" + gene.k_code + "</td><td>" + gene.definition + "</td><td>"
-            first_iteration = True  # used to avoid adding a ", " to the first hyperlink
-            for m_code in gene.link_path:  # cycles through each map code for pathways linked to gene
-                m_code = m_code[:8]  # isolates the map code from the map code and name name in link_path item
-                pathway = next(temp_pathway for temp_pathway in pathwayList if
-                               temp_pathway.map_code == m_code)  # finds pathway that matches map code
-                hyper_text = pathway.name + "(" + str(len(
-                    pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
-                url = pathway.generate_url(gene.k_code)  # generates the url
-                hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
-                if not first_iteration:
-                    hyperlink = ", " + hyperlink  # adds a ", " between hyperlinks
-                first_iteration = False
-                row = row + hyperlink  # adds hyperlink to row
-            row = row + "</td></tr>"  # finishes html code for end of row
-            html_code = html_code + row  # add row to html code
-        html_code = html_code + """					</tbody>
+            for gene in geneList:  # cycles through even gene; one gene each row
+                # adds the gene number, k number, and definition to first three columns
+                row = "<tr><td>" + gene.gene_num + "</td><td>" + gene.name + "</td><td>" + gene.k_code + "</td><td>" \
+                      + gene.definition + "</td><td>"
+                first_iteration = True  # used to avoid adding a ", " to the first hyperlink
+                for m_code in gene.link_path:  # cycles through each map code for pathways linked to gene
+                    m_code = m_code[:8]  # isolates the map code from the map code and name name in link_path item
+                    pathway = next(temp_pathway for temp_pathway in pathwayList if
+                                   temp_pathway.map_code == m_code)  # finds pathway that matches map code
+                    hyper_text = pathway.name + "(" + str(len(
+                        pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
+                    url = pathway.generate_url(gene.k_code)  # generates the url
+                    hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
+                    if not first_iteration:
+                        hyperlink = ", " + hyperlink  # adds a ", " between hyperlinks
+                    first_iteration = False
+                    row = row + hyperlink  # adds hyperlink to row
+                row = row + "</td></tr>"  # finishes html code for end of row
+                html_code = html_code + row  # add row to html code
+            html_code = html_code + """</tbody>
     				</table>
     			</div>
     		</div>
-    	</div>
+    	</div>"""
+
+        if pathway_table:  # if true, includes the two tables for pathways
+            html_code = html_code + """
     	<br />
     	<div class="scrollingtable">
     		<div>
@@ -385,15 +509,15 @@ def out_HTML():
     					</thead>
     					<tbody>
                             """
-        pathwayList.sort(key=lambda pathway: len(pathway.genes_invol), reverse=True)
-        for pathway in pathwayList:
-            hyper_text = pathway.name + "(" + str(
-                len(pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
-            url = pathway.generate_url("")  # generates the url
-            hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
-            row = "<tr><td>" + hyperlink + "</td></tr>"
-            html_code = html_code + row
-        html_code = html_code + """					</tbody>
+            pathwayList.sort(key=lambda pathway: len(pathway.genes_invol), reverse=True)
+            for pathway in pathwayList:
+                hyper_text = pathway.name + "(" + str(
+                    len(pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
+                url = pathway.generate_url("")  # generates the url
+                hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
+                row = "<tr><td>" + hyperlink + "</td></tr>"
+                html_code = html_code + row
+            html_code = html_code + """</tbody>
     				</table>
     			</div>
     		</div>
@@ -415,15 +539,15 @@ def out_HTML():
     					</thead>
     					<tbody>
                             """
-        pathwayList.sort(key=lambda pathway: pathway.name)
-        for pathway in pathwayList:
-            hyper_text = pathway.name + "(" + str(
-                len(pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
-            url = pathway.generate_url("")  # generates the url
-            hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
-            row = "<tr><td>" + hyperlink + "</td></tr>"
-            html_code = html_code + row
-        html_code = html_code + """					</tbody>
+            pathwayList.sort(key=lambda pathway: pathway.name)
+            for pathway in pathwayList:
+                hyper_text = pathway.name + "(" + str(
+                    len(pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
+                url = pathway.generate_url("")  # generates the url
+                hyperlink = "<a href=\"" + url + "\">" + hyper_text + "</a>"  # embeds hyperlink to text
+                row = "<tr><td>" + hyperlink + "</td></tr>"
+                html_code = html_code + row
+            html_code = html_code + """</tbody>
     				</table>
     			</div>
     		</div>
@@ -433,8 +557,177 @@ def out_HTML():
         f.write(html_code)
     f.close()
 
+    print("Tables Complete")  # status update for when program is finished
+
+############ User Interface ############
+class UI:  # class to wrap all the menu screens that will help user navigate the program
+    def menu_data(self):  # first menu that will ask whether to create new data file or use a pre-existing one
+        print(textwrap.dedent("""
+                                 Would you like to:
+                                    1) Create a generate a new data file and table from a new dataset of KO numbers
+                                    2) Generate a new table from an existing data file
+                                """))  # displays options for
+        choice = input("Input a digit for your choice: ")  # ask user for input as a single digit
+        if choice == '1':  # if user chose '1'
+            self.menu_data_new()  # then initiate menu branch for creating data file and html table from new dataset
+        elif choice == '2':  # if user chose '2'
+            self.menu_data_existing()  # then initiate menu branch that just generates html table from pre-existing data file
+        else:  # if input was not 1 or 2, then ask again
+            print("Not a valid choice")
+            self.menu_data()
+
+
+    def menu_data_new(self):  # menu that prompts for input file to create a new data file from dataset of KO numbers
+        print(textwrap.dedent("""
+                                 Please enter either the relative or absolute path to the input file below"""))
+        input_file = input()  # accepts user specified path to input file and stores as string in input_file
+        set_input(input_file)  # uses user specified path to set paths and file names the code will use
+        print(textwrap.dedent("""
+                                 Trimming input file"""))  # status update
+        trim_unannotated()  # trim the data file of genes that are not associated with a KO number
+        print(textwrap.dedent("""
+                                 Trimming input file (complete)
+                                 
+                                 Extracting data from KEGG"""))  #status update
+        gen_pathway()  # accesses KEGG API to extract information on genes and pathways associated with input KO#s
+
+        print(textwrap.dedent("""Extracting data from KEGG (complete)"""))  # status update
+        self.menu_filters()
+
+    def menu_data_existing(self):  # does not extract any info from KEGG, but uses pre-generated data file
+        print(textwrap.dedent("""
+                                 Please enter either the relative or absolute path to the data file below
+                                 """))
+        data_file = input()  # accepts user specified path to data file and stores as string in data_file
+        try:  # try to open data file
+            with open(data_file, 'rb') as f:
+                if pickle.load(f):  # loads first value from data file which is a boolean indicating if file is complete
+                    set_data_file(data_file)  # if file is complete, then set paths using the path the user input
+                    load_data(data_file)  # loads lists in data file into global variables to be used
+                    self.menu_filters()
+                else:  # if the file is incomplete, return to first menu
+                    print("Data file is incomplete")
+                    self.menu_data()  # returns user to first menu where they may complete the data file
+        except FileNotFoundError:  # if file could not be found, then re-prompt for data file location
+            print(data_file + " was not found")
+            self.menu_data_existing()
+
+    def menu_filters(self):  # ask whether user would like to filter data
+        filter_present = len(_gene_list) != _total_genes  # determines whether a filter is present
+        if not filter_present:
+            print(textwrap.dedent("""
+                                     Would you like to filter the data?
+                                        1) Yes
+                                        2) No
+                                     """))
+        else:
+            print(textwrap.dedent("""
+                                     Would you like to apply another filter?
+                                        1) Yes
+                                        2) No
+                                        3) Remove all filters
+                                     """))
+        choice = input()
+        if choice == '1':
+            self.menu_filters_type()
+        elif choice == '2':
+            self.menu_table_name()
+        elif choice == '3':
+            load_data()  # program will repopulate gene and pathway lists to reverse effects of filters
+            self.menu_filters()
+        else:
+            print("Not a valid choice")
+            self.menu_filters()
+
+    def menu_filters_type(self):  # asks user which type of filter they would like to apply to the data
+        global _gene_list #  no longer refers to a local global _gene_list
+        print(textwrap.dedent("""
+                                 What would you like to filter by?
+                                    1) Name
+                                    2) Definition
+                                    3) Pathway
+                                    4) Go back to previous menu
+                                 """))
+
+        filter_type = input()
+        valid_choice = True  # keeps track of whether a valid input was made
+
+        if filter_type != '4':  # if user wants to go back to previous menu w/o filtering then skip below code
+
+            print(textwrap.dedent("""
+                                     Enter text you would like to search for: 
+                                     """))
+            search = input()
+
+            prev_gene_list = _gene_list[:]
+
+            if filter_type == '1':
+                print("Number of genes before filter: " + str(len(_gene_list)))  # displays number of genes before filter
+                # only keep genes that return True for check_name
+                _gene_list[:] = [gene for gene in _gene_list if gene.check_name(search)]
+                print("Number of genes after filter: " + str(len(_gene_list)))  # displays num of genes after filter
+            elif filter_type == '2':
+                print("Number of genes before filter: " + str(len(_gene_list)))  # displays number of genes before filter
+                # only keep genes that return True for check_definition
+                _gene_list[:] = [gene for gene in _gene_list if gene.check_definition(search)]
+                print("Number of genes after filter: " + str(len(_gene_list)))  # displays num of genes after filter
+            elif filter_type == '3':
+                print("Number of genes before filter: " + str(len(_gene_list)))  # displays number of genes before filter
+                # only keep genes that return True for check_pathway
+                _gene_list[:] = [gene for gene in _gene_list if gene.check_pathway(search, _pathway_list)]
+                print("Number of genes after filter: " + str(len(_gene_list)))  # displays num of genes after filter
+            else:
+                valid_choice = False  # if input was not 1-3, then the input was not valid, so valid_choice is False
+
+            if len(_gene_list) == 0:
+                print("No entries found with that search. Reverting filter.")
+                _gene_list = prev_gene_list[:]
+                print("Number of genes after previous filter reverted: " + str(len(_gene_list)))
+
+        if valid_choice:  # test to see whether a valid choice was made
+            self.menu_filters()  # if a valid choice was made then go back to the menu.filters menu
+        else:
+            print("Not a valid choice")  # if a valid choice was not made, then print
+            self.menu_filters_type()  # and return to same menu for allow re-input
+
+    def menu_table_name(self):  # this menu prompts user to choose a name for the html file
+        custom_name = None  # might store user defined html file name
+        basename, ext = get_file_name(_html_file)  # cuts path from file name
+        name_no_ext, ext = ntpath.splitext(basename)  # stores file name w/o ext in name_no_ext and the extension in ext
+        print(textwrap.dedent("""
+                                 Enter the output file name or press ENTER to use the default name [""" + name_no_ext + """]:
+                                 """))
+        choice = input()  # prompts user to set name of output file
+        if choice.strip() != "":
+            custom_name = ntpath.join(ntpath.dirname(_html_file), choice + ext)  # creates absolute path from specified name
+        self.menu_table_type(custom_name)
+
+    def menu_table_type(self, custom_name):  # this menu prompts user to choose between making a table for genes or pathways
+
+        print(textwrap.dedent("""
+                                 Would you like to:
+                                    1) Generate a table of genes
+                                    2) Generate a table of genes and pathways
+                                    3) Generate a table of pathways
+                                 """))
+        choice = input("Input a digit for your choice: ")
+
+        # if pathway tables needs to be generated and some genes have been filtered
+        if (choice == '2' or choice == '3') and len(_gene_list) != _total_genes:
+            # trims _pathway_list to remove pathways where with no associated genes (were removed in filter)
+            _pathway_list[:] = [pathway for pathway in _pathway_list if pathway.check_genes(_gene_list)]
+
+        if choice == '1':
+            out_HTML(html_file = custom_name, pathway_table = False)  # generates only the genes table
+        elif choice == '2':
+            out_HTML(html_file = custom_name)  # generates both genes and pathways tables, and run next menu to set html file name
+        elif choice == '3':
+            out_HTML(html_file = custom_name, gene_table = False)  # generates only the pathways table
+        else:
+            print("Not a valid choice")
+            self.menu_table_type()
+
 ############ if script is run then do this ############
 if __name__ == "__main__":
-    trimmed_file_name = trim_unannotated()
-    gen_pathway(trimmed_file_name)
-    out_HTML()
+    ui = UI()
+    ui.menu_data()
