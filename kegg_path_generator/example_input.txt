@@ -1,0 +1,200 @@
+gene1
+gene2	K12829
+gene3	K14963
+gene4	K20672
+gene5	K12184
+gene6
+gene7	K04958
+gene8
+gene9	K09075
+gene10
+gene11	K06057
+gene12	K17906
+gene13	K00911
+gene14	K08182
+gene15	K05954
+gene16	K14300
+gene17
+gene18
+gene19	K11374
+gene20
+gene21
+gene22
+gene23	K04350
+gene24
+gene25	K06115
+gene26	K04733
+gene27
+gene28	K10275
+gene29
+gene30
+gene31
+gene32	K14766
+gene33
+gene34
+gene35
+gene36	K09032
+gene37	K08268
+gene38
+gene39	K02131
+gene40	K09321
+gene41
+gene42	K11425
+gene43
+gene44
+gene45	K01679
+gene46	K17260
+gene47	K08585
+gene48	K01490
+gene49
+gene50	K01490
+gene51
+gene52
+gene53	K07296
+gene54	K10523
+gene55	K15683
+gene56
+gene57	K05012
+gene58	K21032
+gene59
+gene60	K04079
+gene61
+gene62
+gene63
+gene64	K00507
+gene65
+gene66
+gene67	K03260
+gene68	K00910
+gene69	K13098
+gene70
+gene71
+gene72
+gene73
+gene74	K04498
+gene75	K10871
+gene76
+gene77	K10175
+gene78	K09027
+gene79	K14574
+gene80
+gene81
+gene82	K14838
+gene83	K11985
+gene84
+gene85	K14649
+gene86	K20211
+gene87	K10588
+gene88	K01867
+gene89
+gene90	K10600
+gene91	K04403
+gene92
+gene93	K05955
+gene94
+gene95
+gene96	K18703
+gene97	K02905
+gene98	K17436
+gene99	K01229
+gene100	K09451
+gene101
+gene102	K16866
+gene103	K16365
+gene104	K08865
+gene105	K09468
+gene106
+gene107	K11251
+gene108
+gene109
+gene110	K04319
+gene111	K19941
+gene112	K04186
+gene113	K17795
+gene114	K11251
+gene115	K17795
+gene116	K04858
+gene117
+gene118	K18166
+gene119	K10251
+gene120	K10260
+gene121	K02923
+gene122
+gene123	K08220
+gene124
+gene125
+gene126	K11578
+gene127
+gene128	K03019
+gene129
+gene130	K20526
+gene131	K21891
+gene132
+gene133
+gene134
+gene135	K19685
+gene136	K11865
+gene137	K17253
+gene138	K05750
+gene139	K13106
+gene140
+gene141	K01301
+gene142	K13138
+gene143	K07739
+gene144	K14835
+gene145	K05694
+gene146	K00142
+gene147	K17914
+gene148	K01934
+gene149
+gene150	K14546
+gene151	K15168
+gene152	K19365
+gene153
+gene154	K17914
+gene155	K16803
+gene156
+gene157	K06058
+gene158	K02975
+gene159	K14161
+gene160	K14692
+gene161
+gene162
+gene163	K15047
+gene164
+gene165	K01116
+gene166
+gene167
+gene168	K14753
+gene169
+gene170
+gene171
+gene172	K01349
+gene173	K01332
+gene174	K01737
+gene175
+gene176	K05175
+gene177	K12824
+gene178	K14719
+gene179
+gene180
+gene181	K13718
+gene182
+gene183	K07252
+gene184	K09855
+gene185
+gene186	K03868
+gene187	K14035
+gene188	K06563
+gene189	K09680
+gene190	K03678
+gene191
+gene192
+gene193	K10802
+gene194	K06508
+gene195	K17541
+gene196	K10862
+gene197	K12833
+gene198
+gene199	K19202
+gene200	K04209
