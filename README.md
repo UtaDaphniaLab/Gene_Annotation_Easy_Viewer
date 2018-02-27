@@ -1,5 +1,5 @@
 # KEGG Annotation Easy Viewer (KAEV)
-KAEV is a tool to help visualize BLAST results after using KEGG Automatic Annotation Server (KAAS) to annotate a region of DNA. The software focuses on organizing the the gene annotation data obtained from KAAS in a gene-centric view. The goal of this software is to help researchers predict the function of genes belonging to non-model organisms.
+KAEV is a tool to help visualize BLAST results after using KEGG Automatic Annotation Server (KAAS) to annotate a region of DNA. The software focuses on organizing the gene annotation data obtained from KAAS in a gene-centric view. The goal of this software is to help researchers predict the function of genes belonging to non-model organisms.
 
 ## Starting Up
 
