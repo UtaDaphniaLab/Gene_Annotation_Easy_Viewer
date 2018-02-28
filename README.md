@@ -42,4 +42,3 @@ An example output file can be found in the gene_annotation_easy_viewer folder. I
 This project is licensed under the MIT license and is available for free.
 
 [![DOI](https://zenodo.org/badge/111146172.svg)](https://zenodo.org/badge/latestdoi/111146172)
-
