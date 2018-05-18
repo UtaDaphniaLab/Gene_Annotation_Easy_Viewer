@@ -1,7 +1,8 @@
 ############ Imports ############
-import ntpath  # needed to retrieve absolute path
 import contextlib  # the closing context manager will ensure connection to url is closed after with statement
 import textwrap  # used when printing UI in order to remove common leading indents
+import os  # used to remove temporary files created and path manipulation
+import urllib  # to handle HTTPError exceptions raised from the urllib module
 from urllib.request import urlopen  # import the tools we need to open url
 import bisect  # module needed to insert an item into a sorted list
 import pickle  # needed to save and load data
@@ -44,20 +45,20 @@ def separate_file(path):  # accepts path as string and separates the file name [
     return [path_list[:-1],path_list[-1]]  # returns list with all the path without file name and file name
 
 def get_file_name(path):  # returns the file new from input path (should work on all operating system)
-    head, tail = ntpath.split(path)  # splits path into directory (head) and file name (tail)
-    file_name = tail or ntpath.basename(head)  # if path ended in slash (a\b\c\) will use 'basename()' to get file name
-    file_no_ext, ext = ntpath.splitext(file_name)  # will separate ext from file name
+    head, tail = os.path.split(path)  # splits path into directory (head) and file name (tail)
+    file_name = tail or os.path.basename(head)  # if path ended in slash (a\b\c\) will use 'basename()' to get file name
+    file_no_ext, ext = os.path.splitext(file_name)  # will separate ext from file name
     return file_name, file_no_ext  # will return a tuple of file name with ext followed by file name without ext
 
 def set_input(path):  # used to set the paths of input file, trimmed file, and data file based on input file path
     global _input_file  # sets local _input_file to global _input_file
     global _trimmed_file  # sets local _trimmed_file to global _trimmed_file
     global _data_file  # sets local _data_file to global _data_file
-    _input_file = ntpath.abspath(path)  # handles distinction between relative and abs path by converting all to abs path
-    file_dir = ntpath.dirname(_input_file)
+    _input_file = os.path.abspath(path)  # handles distinction between relative and abs path by converting all to abs path
+    file_dir = os.path.dirname(_input_file)
     file_name, file_no_ext = get_file_name(_input_file)  # gets file name (w/ and w/o ext) without the directory  path
-    _trimmed_file = ntpath.join(file_dir, "trimmed_" + file_name)  # create path for trimmed file with dir and file name
-    _data_file = ntpath.join(file_dir, file_no_ext + ".dat")  # create path for data file with ".dat" extension
+    _trimmed_file = os.path.join(file_dir, "trimmed_" + file_name)  # create path for trimmed file with dir and file name
+    _data_file = os.path.join(file_dir, file_no_ext + ".dat")  # create path for data file with ".dat" extension
     set_data_file()  # with no argument passed, functions will just store a path to html using the stored _data_file
 
 
@@ -68,15 +69,15 @@ def set_data_file(data_file = None):  # will specify path to data file to be use
     if data_file == None:  # if a path to the data_file was not specify,
         data_file = _data_file  # use the path that was most recently stored
     else:  # if a path was specified,
-        data_file = ntpath.abspath(data_file)  # obtains the absolute path to the specified data file
+        data_file = os.path.abspath(data_file)  # obtains the absolute path to the specified data file
         _data_file = data_file  # then store it as the global _data_file path
         global _trimmed_file  # sets local _trimmed_file to global _trimmed_file
         global _input_file  # sets local _input_file to global _input_file
         _input_file = "No_File_Specified"  # (1/2)  delete the global _input_file and the _trimmed_file path to avoid
         _trimmed_file = "No_File_Specified"  # (2/2) overriding the data file with the wrong dataset
 
-    name_no_ext, ext = ntpath.splitext(data_file)  # stores file name w/o ext in name_no_ext and the extension in ext
-    _html_file = ntpath.join(ntpath.dirname(data_file),  name_no_ext + ".html")  # creates path to html file
+    name_no_ext, ext = os.path.splitext(data_file)  # stores file name w/o ext in name_no_ext and the extension in ext
+    _html_file = os.path.join(os.path.dirname(data_file),  name_no_ext + ".html")  # creates path to html file
 
 def load_data(data_file = None):  # will load data from data file into _gene_list and _pathway_list
     global _data_file  # sets local _data_file to global _data_file
@@ -100,10 +101,22 @@ def load_data(data_file = None):  # will load data from data file into _gene_lis
 
     _total_genes = len(_gene_list)
 
+def retrieve_batch_files(data):
+    file_list = []  # will be used to store list of input/data files
+    for file_path in os.listdir('.'):  # cycle through every file in the current directory, but...
+        if data:  # if user specified they wanted to use data files
+            if file_path.endswith(".dat"):  # only use files with the .dat extension
+                file_list.append(file_path)
+        else:  # if user specified they wanted to use input files
+            # only use txt files, but do not use any of the output txt files as a precaution
+            if file_path.endswith(".txt") and not file_path.endswith("-gene_table.txt"):
+                file_list.append(file_path)  # add the input file path to the input_file_list
+    return file_list
+
 class Pathway_MAP:  # class for pathway map objects
     def __init__(self, ipathway_info):  # accepts the map code of the pathway
         pathway_info = ipathway_info.split(None, 1)  # separtes the map code and the map name by spiting at first space
-        self.map_code = pathway_info[0]  # sotres map code in map_code
+        self.map_code = pathway_info[0]  # stores map code in map_code
         self.name = pathway_info[1]  # stores name into the 'name' variable
         self.genes_invol = []  # creates an empty list that will store all the genes involved in the pathway
         self.url = ""  # base url or pathway map with genes highlighted
@@ -142,7 +155,10 @@ class Gene:  # class for gene objects
         # ex list: [NAME, DEFINITION, [map_code map_name, map_code map_name, map_code map_name, ...]]
         linkPathList = []  # list to store pathways the gene is involved in [map_code map_name, ...]
         link = 'http://rest.kegg.jp/get/' + self.k_code  # creates link to get info on gene
-        info_url = decode_url(link)  # access KEGG for information
+        try:
+            info_url = decode_url(link)  # access KEGG for information
+        except urllib.error.HTTPError as error:
+            return ['', '', []]
         for line in info_url.splitlines():  # splits string by line
             if not linkPathList:  # pythonic way to check if code reached pathway yet, if it has then go to else
                 column = line.split(None, 1)  # split line only once at first space to create two columns
@@ -194,7 +210,6 @@ class Gene:  # class for gene objects
                     break
         return is_there
 
-
 ############ Trims Raw Input File ############
 def trim_unannotated(path = None):
     global _input_file
@@ -224,9 +239,9 @@ def gen_pathway(trimmed_file = None, data_file = None):
             sys.exit("No data file was ever specified.")  # then exit the code with the following msg
         else:
             data_file = _data_file  # the function will retrieve the data file path that was most recently stored
-    data_name = ntpath.basename(data_file)  # gets the name of the data file without directory and sets to data_name
+    data_name = os.path.basename(data_file)  # gets the name of the data file without directory and sets to data_name
 
-    if not ntpath.isfile(trimmed_file):  # before running rest of code, checks if the trimmed input file exist
+    if not os.path.isfile(trimmed_file):  # before running rest of code, checks if the trimmed input file exist
         sys.exit("No trimmed input file found at " + trimmed_file)  # if it doesn't exist,exit the program with msg
 
     pathwayList = []  # creates an empty list to store all the pathways the annotated genes are involved in
@@ -240,6 +255,7 @@ def gen_pathway(trimmed_file = None, data_file = None):
     try:  # trys to open data file
         with open(data_file, "rb") as f:
             if pickle.load(f):  # checks if the data is complete or not
+                os.remove(trimmed_file)  # delete the trimmed_file after using it to keep the folder tidy
                 sys.exit("A completed data file for " + data_name + " dataset already exist. Please rename or delete " + data_name + " if you wish to work with a rerun dataset.")  # if data is already complete, do not run rest of code
             else:  # if data is not complete, load the data
                 num_already_saved = pickle.load(f)  # record where the data left off at
@@ -285,9 +301,10 @@ def gen_pathway(trimmed_file = None, data_file = None):
             resume_check_link_path = False  # no longer need to check if gene was already added to a pathway after first gene
 
     completed = True  # if program reaches this step then it is completed
+    os.remove(trimmed_file)  # delete the trimmed_file after using it to keep the folder tidy
     save(geneList,pathwayList, completed)  # saves data to file
 
-############ Generate HTML Output File ############
+############ Generate Output File ############
 def out_HTML(data_file = None, html_file = None, gene_table = True, pathway_table = True):
     global _html_file  # sets local _html_file to the global _html_file
     global _data_file  # sets local _data_file to the global _data_file
@@ -559,30 +576,68 @@ def out_HTML(data_file = None, html_file = None, gene_table = True, pathway_tabl
 
     print("Tables Complete")  # status update for when program is finished
 
+def out_txt(output_file = None):
+    global _input_file  # sets local _input_file to the global _input_file
+    global _html_file  # sets local _html_file to the global _html_file
+    global _data_file  # sets local _data_file to the global _data_file
+
+    if output_file == None:  # if user does not specify name of output file, then
+        file_name, file_extension = os.path.splitext(_html_file)
+        output_file = file_name + "-gene_table" + ".txt"
+    output_name, output_extension = os.path.splitext(output_file)  # isolates the output extension from file name
+    if output_extension != ".txt":
+        output_file = output_name + ".txt"
+
+    geneList = _gene_list  # store data of genes in this List
+    pathwayList = _pathway_list  # store pathway data in this List
+
+    with open(output_file, "w") as f:
+        f.write("GeneID\tGene_Name\tDefinition\t")
+        for gene in geneList:
+            line = str(gene.gene_num) + "\t" + str(gene.name) + "\t" + str(gene.definition) + "\t"
+            for m_code in gene.link_path:  # cycles through each map code for pathways linked to gene
+                m_code = m_code[:8]  # isolates the map code from the map code and name name in link_path item
+                pathway = next(temp_pathway for temp_pathway in pathwayList if
+                               temp_pathway.map_code == m_code)  # finds pathway that matches map code
+                pathway_name = pathway.name  # stores the name of the pathway in a string to manipulate later
+                hyper_text = pathway_name.replace(" ", "_") + "(" + str(len(
+                    pathway.genes_invol)) + ")"  # generates the text for the hyperlink (name + num of associated genes)
+                line = line + hyper_text + " "  # adds pathway name to line to be written along with a space
+            line = line + "\n"  # add a new line after finishes storing everything to be written on that line
+            f.write(line)
+
 ############ User Interface ############
 class UI:  # class to wrap all the menu screens that will help user navigate the program
     def menu_data(self):  # first menu that will ask whether to create new data file or use a pre-existing one
         print(textwrap.dedent("""
                                  Would you like to:
                                     1) Create a generate a new data file and table from a new dataset of KO numbers
-                                    2) Generate a new table from an existing data file
+                                    2) Create a generate a new data file and table from a new dataset of KO numbers (Batch)
+                                    3) Generate a new table from an existing data file
+                                    4) Generate a new table from an existing data file (Batch)
                                 """))  # displays options for
         choice = input("Input a digit for your choice: ")  # ask user for input as a single digit
         if choice == '1':  # if user chose '1'
             self.menu_data_new()  # then initiate menu branch for creating data file and html table from new dataset
         elif choice == '2':  # if user chose '2'
+            self.menu_batch_list(data = False)  # then initiate menu branch for processing multiple input files at once
+        elif choice == '3':  # if user chose '3'
             self.menu_data_existing()  # then initiate menu branch that just generates html table from pre-existing data file
+        elif choice == '4':  # if user chose '4'
+            self.menu_batch_list(data = True)  # then initiate menu branch for processing multiple data files at once
         else:  # if input was not 1 or 2, then ask again
             print("Not a valid choice")
             self.menu_data()
 
 
-    def menu_data_new(self):  # menu that prompts for input file to create a new data file from dataset of KO numbers
+    def menu_data_new(self, input_file = None, input_list = None):  # menu that prompts for input file to create a new data file from dataset of KO numbers
         print(textwrap.dedent("""
                                  Please enter either the relative or absolute path to the input file below"""))
-        input_file = input()  # accepts user specified path to input file and stores as string in input_file
+        if input_file == None:
+            input_file = input()  # accepts user specified path to input file and stores as string in input_file
+
         set_input(input_file)  # uses user specified path to set paths and file names the code will use
-        if ntpath.isfile(_input_file):  # checks if the file specified by the user exists
+        if os.path.isfile(_input_file):  # checks if the file specified by the user exists
             print(textwrap.dedent("""
                                      Trimming input file"""))  # status update
             trim_unannotated()  # trim the data file of genes that are not associated with a KO number
@@ -594,30 +649,94 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             load_data()  # loads data from newly generated data file to populate _gene_list and _pathway_list
 
             print(textwrap.dedent("""Extracting data from KEGG (complete)"""))  # status update
-            self.menu_filters()
+            self.menu_filters(input_list = input_list)
         else:  # if file could not be found, then re-prompt for input file location
             print(_input_file + " was not found")
-            self.menu_data_new()
+            self.menu_data_new(input_list = input_list)
 
-    def menu_data_existing(self):  # does not extract any info from KEGG, but uses pre-generated data file
+    def menu_data_existing(self, data_file = None, input_list = None):  # does not extract any info from KEGG, but uses pre-generated data file
         print(textwrap.dedent("""
                                  Please enter either the relative or absolute path to the data file below
                                  """))
-        data_file = input()  # accepts user specified path to data file and stores as string in data_file
-        try:  # try to open data file
-            with open(data_file, 'rb') as f:
-                if pickle.load(f):  # loads first value from data file which is a boolean indicating if file is complete
-                    set_data_file(data_file)  # if file is complete, then set paths using the path the user input
-                    load_data(data_file)  # loads lists in data file into global variables to be used
-                    self.menu_filters()
-                else:  # if the file is incomplete, return to first menu
-                    print("Data file is incomplete")
-                    self.menu_data()  # returns user to first menu where they may complete the data file
-        except FileNotFoundError:  # if file could not be found, then re-prompt for data file location
-            print(data_file + " was not found")
-            self.menu_data_existing()
+        if data_file == None:
+            data_file = input()  # accepts user specified path to data file and stores as string in data_file
+        file_name, extension = os.path.splitext(data_file)  # stores file name and extension respectively
+        if extension == '':  # if no extension is found...
+            data_file = data_file + ".dat"  # add the .dat extension onto the path
+            extension = ".dat"  # sets extension to ".dat" to pass the next if statement
+        if extension.lower() == ".dat":  # checks if the file has the correct extension
+            try:  # try to open data file
+                with open(data_file, 'rb') as f:
+                    if pickle.load(f):  # loads first value from data file which is a boolean indicating if file is complete
+                        set_data_file(data_file)  # if file is complete, then set paths using the path the user input
+                        load_data(data_file)  # loads lists in data file into global variables to be used
+                        self.menu_filters(input_list = input_list)
+                    else:  # if the file is incomplete, return to first menu
+                        print("Data file is incomplete")
+                        self.menu_data()  # returns user to first menu where they may complete the data file
+            except FileNotFoundError:  # if file could not be found, then re-prompt for data file location
+                print(data_file + " was not found")
+                self.menu_data_existing(input_list = input_list)
+        else:  # if file does not have the correct format ".dat"
+            print(textwrap.dedent("""
+                                         Please choose a dat file as the data file."""))  # inform user of error
+            self.menu_data_existing(input_list = input_list)  # reprompt the question
 
-    def menu_filters(self):  # ask whether user would like to filter data
+    def menu_batch_list(self, data):  # menu that prompts for list of input files to create a new data file from dataset of KO numbers
+        # data = True for using data files; data = False when using input files
+        file_list = []  # list of input/data file paths
+        if data:
+            print(textwrap.dedent("""
+                                     Please enter either the relative or absolute path to a text file containing a list of the data files.
+                                     Example text file with list of data files:
+                                     C_elegans-1.dat
+                                     C_elegans-2.dat
+                                     D_pulex-1.dat
+
+                                     Enter the word 'all' to use every dat file in the current directory as data files.
+                                     Ensure all data files being run are complete
+                                     """))
+        else:
+            print(textwrap.dedent("""
+                                     Please enter either the relative or absolute path to a text file containing a list of the input files.
+                                     Example text file with list of input files:
+                                     C_elegans-1.txt
+                                     C_elegans-2.txt
+                                     D_pulex-1.txt
+                                     
+                                     Enter the word 'all' to use every txt file in the current directory as input files.
+                                     Ensure all files being run are input txt files and that they do NOT have a complete data file already.
+                                     """))
+        choice = input()  # accepts user specified path to text file with list of input/data files; may also accept "all"
+        if choice.lower() == 'all':  # if user wants to use all .txt/.dat files in current directory
+            file_list = retrieve_batch_files(data)  # stores all txt/dat files in current directory in file_list
+            self.menu_batch_run(data, file_list)  # run a batch run using the specified file list
+        else:  # if user specifies a path to a text file containing a list of input/data files instead
+            try:  # try to open the text file
+                with open(choice, 'r') as f:  # opens the text file in order to extract input file paths
+                    for line in f:  # cycle through each line of the list of input files
+                        file_list.append(line.rstrip())  # add line to file_list after stripping the \n away
+                self.menu_batch_run(data, file_list)  # run a batch run using the specified file list
+            except FileNotFoundError:
+                print(choice + " was not found")
+                self.menu_batch_list(data)
+
+    def menu_batch_run(self, data, file_list):
+        user_inputs = []  # list to store user inputs for batch runs
+        user_inputs.extend(self.menu_filters(batch_ask = True))  # stores user's filter choices in user_input list
+        if user_inputs[0]  == '1':  # if user decided to add a filter to the data
+            user_inputs.append('2')  # add choice of '2) No' when prompted to add another filter
+        user_inputs.append("")  # adds choice of no custom name
+        user_inputs.append(self.menu_table_type(batch_ask = True, custom_name = None))  # adds choice of table type
+
+        for file in file_list:
+            temp_inputs = user_inputs[:]
+            if data:
+                self.menu_data_existing(data_file = file, input_list = temp_inputs)
+            else:
+                self.menu_data_new(input_file = file, input_list = temp_inputs)
+
+    def menu_filters(self, batch_ask = False, input_list = None):  # ask whether user would like to filter data
         filter_present = len(_gene_list) != _total_genes  # determines whether a filter is present
         if not filter_present:
             print(textwrap.dedent("""
@@ -632,19 +751,30 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                                         2) No
                                         3) Remove all filters
                                      """))
-        choice = input()
+        if input_list:  # if this is a batch run with a list of user inputs available...
+            choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+        else:  # if no input list is provided
+            choice = input()  # prompt the user to choose whether or not to filter data
         if choice == '1':
-            self.menu_filters_type()
+            if batch_ask:  # if running this function only to record user input for batch run
+                filter_choices = [choice]  # stores all of user choice of using a filter
+                filter_choices.extend(self.menu_filters_type(batch_ask))  # stores user choice of filter type and search
+                if filter_choices[-1] == '0':  # if user changed mind about using a filter
+                    filter_choices = ['2']  # change first choice to '2) No' to save time
+                return filter_choices  # return user choices for filter
+            self.menu_filters_type(input_list = input_list)
         elif choice == '2':
-            self.menu_table_name()
+            if batch_ask:  # if running this function only to record user input for batch run
+                return choice  # return user input to not filter data
+            self.menu_table_name(input_list = input_list)
         elif choice == '3':
             load_data()  # program will repopulate gene and pathway lists to reverse effects of filters
-            self.menu_filters()
+            self.menu_filters(input_list = input_list)
         else:
             print("Not a valid choice")
-            self.menu_filters()
+            self.menu_filters(batch_ask, input_list = input_list)
 
-    def menu_filters_type(self):  # asks user which type of filter they would like to apply to the data
+    def menu_filters_type(self, batch_ask = False, input_list = None):  # asks user which type of filter they would like to apply to the data
         global _gene_list #  no longer refers to a local global _gene_list
         print(textwrap.dedent("""
                                  What would you like to filter by?
@@ -654,7 +784,10 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                                     4) Go back to previous menu
                                  """))
 
-        filter_type = input()
+        if input_list:  # if this is a batch run with a list of user inputs available...
+            filter_type = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+        else:
+            filter_type = input()
         valid_choice = True  # keeps track of whether a valid input was made
 
         if filter_type != '4':  # if user wants to go back to previous menu w/o filtering then skip below code
@@ -662,7 +795,13 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             print(textwrap.dedent("""
                                      Enter text you would like to search for: 
                                      """))
-            search = input()
+            if input_list:  # if this is a batch run with a list of user inputs available...
+                search = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+            else:
+                search = input()
+
+            if batch_ask:  # if running this function only to record user input for batch run
+                return [filter_type, search]  # return user input for filter type and search term
 
             prev_gene_list = _gene_list[:]
 
@@ -690,32 +829,47 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                 print("Number of genes after previous filter reverted: " + str(len(_gene_list)))
 
         if valid_choice:  # test to see whether a valid choice was made
-            self.menu_filters()  # if a valid choice was made then go back to the menu.filters menu
+            if batch_ask:  # if chooses not to apply filter afterall during questions for batch run...
+                return '0'  # return 0 to alert program that no filter will be used (batch run can only ask once currently)
+            else:
+                self.menu_filters()  # if a valid choice was made then go back to the menu.filters menu
         else:
             print("Not a valid choice")  # if a valid choice was not made, then print
-            self.menu_filters_type()  # and return to same menu for allow re-input
+            self.menu_filters_type(input_list = input_list)  # and return to same menu for allow re-input
 
-    def menu_table_name(self):  # this menu prompts user to choose a name for the html file
+    def menu_table_name(self, input_list = None):  # this menu prompts user to choose a name for the html file
         custom_name = None  # might store user defined html file name
         basename, ext = get_file_name(_html_file)  # cuts path from file name
-        name_no_ext, ext = ntpath.splitext(basename)  # stores file name w/o ext in name_no_ext and the extension in ext
+        name_no_ext, ext = os.path.splitext(basename)  # stores file name w/o ext in name_no_ext and the extension in ext
         print(textwrap.dedent("""
                                  Enter the output file name or press ENTER to use the default name [""" + name_no_ext + """]:
                                  """))
-        choice = input()  # prompts user to set name of output file
+        if input_list:  # if this is a batch run with a list of user inputs available...
+            choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+        else:
+            choice = input()  # prompts user to set name of output file
         if choice.strip() != "":
-            custom_name = ntpath.join(ntpath.dirname(_html_file), choice + ext)  # creates absolute path from specified name
-        self.menu_table_type(custom_name)
+            custom_name = os.path.join(os.path.dirname(_html_file), choice + ext)  # creates absolute path from specified name
+        self.menu_table_type(custom_name = custom_name, input_list = input_list)
 
-    def menu_table_type(self, custom_name):  # this menu prompts user to choose between making a table for genes or pathways
+    def menu_table_type(self, custom_name, batch_ask = False, input_list = None):  # this menu prompts user to choose between making a table for genes or pathways
 
         print(textwrap.dedent("""
                                  Would you like to:
-                                    1) Generate a table of genes
-                                    2) Generate a table of genes and pathways
-                                    3) Generate a table of pathways
+                                    1) Generate a table of genes (HTML)
+                                    2) Generate a table of genes and pathways (HTML)
+                                    3) Generate a table of pathways (HTML)
+                                    4) Generate a table of genes without links to pathway maps (txt, tab-delimited, small size)
                                  """))
-        choice = input("Input a digit for your choice: ")
+        if input_list:  # if this is a batch run with a list of user inputs available...
+            choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+        else:
+            choice = input("Input a digit for your choice: ")
+
+        if batch_ask:  # if running this function only to record user input for batch run
+            return choice  # return user's choice of table type
+
+        print("\nCreating table\n")  # status update so user knows that script is processing
 
         # if pathway tables needs to be generated and some genes have been filtered
         if (choice == '2' or choice == '3') and len(_gene_list) != _total_genes:
@@ -728,6 +882,8 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             out_HTML(html_file = custom_name)  # generates both genes and pathways tables, and run next menu to set html file name
         elif choice == '3':
             out_HTML(html_file = custom_name, gene_table = False)  # generates only the pathways table
+        elif choice == '4':
+            out_txt(output_file = custom_name)
         else:
             print("Not a valid choice")
             self.menu_table_type()
