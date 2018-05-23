@@ -113,6 +113,21 @@ def retrieve_batch_files(data):
                 file_list.append(file_path)  # add the input file path to the input_file_list
     return file_list
 
+def take_subset(trimmed_filter_file):
+    global _gene_list  # uses the global variable _gene_list
+
+    filter_list = []  # stores list of geneIDs extracted from the trimmed_filter_file to filter the data by
+    with open(trimmed_filter_file, 'r') as tf:  # opens the file at path trimmed_filter_file to read
+        for line in tf:  # goes through the each line of the file; should contain one geneID and K number per line
+            GeneID, K_number = line.split()  # separates the geneID from the K number
+            filter_list.append(GeneID)  # add the geneID to the filter list; by the end, all geneIDs should be added
+    _gene_list[:] = [gene for gene in _gene_list if gene.gene_num in filter_list]
+    os.remove(trimmed_filter_file)  # deletes the trimmed_filter_file after it is finished to keep folder tidy
+
+
+
+
+
 class Pathway_MAP:  # class for pathway map objects
     def __init__(self, ipathway_info):  # accepts the map code of the pathway
         pathway_info = ipathway_info.split(None, 1)  # separtes the map code and the map name by spiting at first space
@@ -213,18 +228,26 @@ class Gene:  # class for gene objects
 ############ Trims Raw Input File ############
 def trim_unannotated(path = None):
     global _input_file
+    global _trimmed_file
+    trimmed_file = _trimmed_file  # sets local trimmed_file to the value of the global _trimmed_file
+
     if path == None:  # if no path is passed to the function
         path = _input_file  # then use the input file path that was previously stored
-    if path != _input_file:  # if the input path was different than the _input_file path set
-        set_input(path)  # set the new _input_file path and trimmed_file path according to specified path
+    else:  # if the input path was set (different from _input_file path); only used when input file is used as filter
+        # creates a path to the temporary trimmed input file that will be used for filtering; different from the...
+        # trimmed file path (_trimmed_file) that is used for generating the data file
+        abs_path = os.path.abspath(path)  # handles distinction between relative and abs path by converting all to abs path
+        file_dir = os.path.dirname(abs_path)  # obtains the path to the directory the file is in
+        file_name, file_no_ext = get_file_name(abs_path)  # gets file name (w/ and w/o ext) without the directory  path
+        trimmed_file = os.path.join(file_dir, "trimmed_" + file_name)  # create path for trimmed file with dir and file name
     try:
         with open(path, 'rU') as gene_list:  # opens specified path of input file to read
-            with open(_trimmed_file, 'w+') as output_file:  # creates a new trimmed file write in
+            with open(trimmed_file, 'w+') as output_file:  # creates a new trimmed file write in
                 for line in gene_list:
                     CurrGene = line.split()
                     if len(CurrGene) == 2:  # only writes genes that have an ascension number assigned to it
                         output_file.write(line)
-            output_file.close()
+            return trimmed_file  # return the name of the trimmed file so it can be passed to other functions and deleted later
     except FileNotFoundError:  # if the computer cannot find the path the user specified
         sys.exit("No input file found at " + path)  # exit the program with error message
 
@@ -592,7 +615,7 @@ def out_txt(output_file = None):
     pathwayList = _pathway_list  # store pathway data in this List
 
     with open(output_file, "w") as f:
-        f.write("GeneID\tGene_Name\tDefinition\t")
+        f.write("GeneID\tGene_Name\tDefinition\n")
         for gene in geneList:
             line = str(gene.gene_num) + "\t" + str(gene.name) + "\t" + str(gene.definition) + "\t"
             for m_code in gene.link_path:  # cycles through each map code for pathways linked to gene
@@ -720,6 +743,9 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             except FileNotFoundError:
                 print(choice + " was not found")
                 self.menu_batch_list(data)
+            except UnicodeDecodeError:
+                print("Error decoding " + choice + ". Ensure you have selected the correct file type.")
+                self.menu_batch_list(data)
 
     def menu_batch_run(self, data, file_list):
         user_inputs = []  # list to store user inputs for batch runs
@@ -736,7 +762,7 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             else:
                 self.menu_data_new(input_file = file, input_list = temp_inputs)
 
-    def menu_filters(self, batch_ask = False, input_list = None):  # ask whether user would like to filter data
+    def menu_filters(self, batch_ask = False, input_list = None, filter_batch_run = False):  # ask whether user would like to filter data
         filter_present = len(_gene_list) != _total_genes  # determines whether a filter is present
         if not filter_present:
             print(textwrap.dedent("""
@@ -751,6 +777,7 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                                         2) No
                                         3) Remove all filters
                                      """))
+
         if input_list:  # if this is a batch run with a list of user inputs available...
             choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
         else:  # if no input list is provided
@@ -762,7 +789,7 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                 if filter_choices[-1] == '0':  # if user changed mind about using a filter
                     filter_choices = ['2']  # change first choice to '2) No' to save time
                 return filter_choices  # return user choices for filter
-            self.menu_filters_type(input_list = input_list)
+            self.menu_filters_type(input_list = input_list, filter_batch_run = filter_batch_run)
         elif choice == '2':
             if batch_ask:  # if running this function only to record user input for batch run
                 return choice  # return user input to not filter data
@@ -774,34 +801,40 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             print("Not a valid choice")
             self.menu_filters(batch_ask, input_list = input_list)
 
-    def menu_filters_type(self, batch_ask = False, input_list = None):  # asks user which type of filter they would like to apply to the data
+    def menu_filters_type(self, batch_ask = False, input_list = None, filter_batch_run = False):  # asks user which type of filter they would like to apply to the data
         global _gene_list #  no longer refers to a local global _gene_list
+        is_single_subset = False  # used to store whether a single or batch subset filter is used
         print(textwrap.dedent("""
                                  What would you like to filter by?
                                     1) Name
                                     2) Definition
                                     3) Pathway
-                                    4) Go back to previous menu
+                                    4) Subset of genes based on another input file
+                                    5) Go back to previous menu
                                  """))
 
         if input_list:  # if this is a batch run with a list of user inputs available...
             filter_type = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
         else:
             filter_type = input()
-        valid_choice = True  # keeps track of whether a valid input was made
 
-        if filter_type != '4':  # if user wants to go back to previous menu w/o filtering then skip below code
+        if filter_type in ['1','2','3', '4']:  # if user wants to go back to previous menu w/o filtering then skip below code
 
-            print(textwrap.dedent("""
-                                     Enter text you would like to search for: 
-                                     """))
-            if input_list:  # if this is a batch run with a list of user inputs available...
-                search = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
-            else:
-                search = input()
+            if filter_type in ['1','2','3']:  # only if user picks options 1-3 does GAEV prompt for a search term
+                print(textwrap.dedent("""
+                                         Enter text you would like to search for: 
+                                         """))
+                if input_list:  # if this is a batch run with a list of user inputs available...
+                    search = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
+                else:
+                    search = input()
 
             if batch_ask:  # if running this function only to record user input for batch run
-                return [filter_type, search]  # return user input for filter type and search term
+                if filter_type in ['1','2','3']:  # if user wanted to enter in search term
+                    return [filter_type, search]  # return user input for filter type and search term
+                else:  # if user selected option four using a subset of genes
+                    print("This option is not available during a batch run.")
+                    return self.menu_filters_type(batch_ask = batch_ask, input_list = input_list, filter_batch_run = filter_batch_run)
 
             prev_gene_list = _gene_list[:]
 
@@ -820,22 +853,77 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                 # only keep genes that return True for check_pathway
                 _gene_list[:] = [gene for gene in _gene_list if gene.check_pathway(search, _pathway_list)]
                 print("Number of genes after filter: " + str(len(_gene_list)))  # displays num of genes after filter
-            else:
-                valid_choice = False  # if input was not 1-3, then the input was not valid, so valid_choice is False
+            if filter_type == '4':  # if user wants to filter the data using the geneIDs of a input file containing a subset
+                    print("Number of genes before filter: " + str(len(_gene_list)))  # displays number of genes before filter
+                    # only keep genes that return True for check_name
+                    is_single_subset = self.menu_filters_type_subset(input_list)  # start menu branch for filtering by input file with subset of genes
+                    print("Number of genes after filter: " + str(len(_gene_list)))  # displays num of genes after filter
 
             if len(_gene_list) == 0:
                 print("No entries found with that search. Reverting filter.")
                 _gene_list = prev_gene_list[:]
                 print("Number of genes after previous filter reverted: " + str(len(_gene_list)))
+            if filter_type != '4' or input_list or is_single_subset:  # prevents the additional prompting of menu after batch run is finished
+                self.menu_filters(input_list = input_list)  # if a valid choice was made then go back to the menu.filters menu
 
-        if valid_choice:  # test to see whether a valid choice was made
+        elif filter_type == '5':
             if batch_ask:  # if chooses not to apply filter afterall during questions for batch run...
                 return '0'  # return 0 to alert program that no filter will be used (batch run can only ask once currently)
             else:
                 self.menu_filters()  # if a valid choice was made then go back to the menu.filters menu
+
         else:
             print("Not a valid choice")  # if a valid choice was not made, then print
             self.menu_filters_type(input_list = input_list)  # and return to same menu for allow re-input
+
+    def menu_filters_type_subset(self, input_list = None):
+        global _gene_list
+        global _pathway_list
+        original_gene_list = _gene_list[:]  # contains the original _gene_list to refresh after manipulation
+        original_pathway_list = _pathway_list[:]  # contains the original _pathway_list to refresh after manipulation
+
+        print(textwrap.dedent("""
+                                 Please enter the absolute or relative path of the input file you would like to filter by:
+                                 
+                                 OR
+                                 
+                                 To produce multiple tables from different input files, enter the term "batch" followed
+                                 by the absolute or relative path to a text file containing the input files to filter by.
+                                 Example text file with list of input files:
+                                 C_elegans-1.txt
+                                 C_elegans-2.txt
+                                 D_pulex-1.txt
+                                 """))
+        if input_list == None:
+            input_file = input()  # prompts user to specify path to input file or list of input files
+        else:
+            input_file = input_list.pop(0)
+
+        input_file_split = input_file.split(None, 1)  # splits the input by the first white space
+        check_batch = input_file_split[0]  # only isolate the first element to check if user input the term "batch"
+        if check_batch.lower() == "batch":  # checks if the first term is "batch"
+            input_file = input_file_split[1]  # stores path to input file
+            with open(input_file, 'r') as f:
+                input_file_list = []  # list to store input files used for filtering
+                for line in f:  # for each line (input file) in the test file...
+                    input_file_list.append(line.strip())  # store the input file in the appropriate list
+            table_type_choice = self.menu_table_type(batch_ask = True, custom_name = None)  # stores user's choice of table type
+            for filter_file in input_file_list:  # for each input file in the list to be used to filter the data
+                _gene_list = original_gene_list[:]  # refreshes the _gene_list to the original unfiltered state
+                _pathway_list = original_pathway_list[:]  # refreshes the _pathway_list to the original unfiltered state
+
+                filter_file_no_ext, filter_file_ext = os.path.splitext(filter_file)  # seperates name w/o ext to pass as custom name
+                filter_file_no_ext = filter_file_no_ext + "-table"  # prevents script from overriding original file
+
+                user_input = ['1','4', filter_file, '2', filter_file_no_ext, table_type_choice]  # general user input to repeat during batch run
+                trimmed_file_for_filter = trim_unannotated(filter_file)  # trim the input file to be in the correct format
+                take_subset(trimmed_file_for_filter)  # filter the data by only using genes from the provided input_file
+                self.menu_filters(input_list = user_input, filter_batch_run = True)
+        else:
+            trimmed_file_for_filter = trim_unannotated(input_file)
+            take_subset(trimmed_file_for_filter)
+            return True  # ensures correct menus are prompted after this choice is chosen
+
 
     def menu_table_name(self, input_list = None):  # this menu prompts user to choose a name for the html file
         custom_name = None  # might store user defined html file name
@@ -856,10 +944,12 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
 
         print(textwrap.dedent("""
                                  Would you like to:
-                                    1) Generate a table of genes (HTML)
-                                    2) Generate a table of genes and pathways (HTML)
-                                    3) Generate a table of pathways (HTML)
-                                    4) Generate a table of genes without links to pathway maps (txt, tab-delimited, small size)
+                                    1) Generate a table of genes (HTML + txt)
+                                    2) Generate a table of genes and pathways (HTML + txt)
+                                    3) Generate a table of pathways (HTML + txt)
+                                    4) Generate a only a table of genes without links to pathway maps (txt, tab-delimited, small size)
+                                    
+                                    Note: The txt file is tab delimited and easily manipulated in text editors, but does not contain embedded links.
                                  """))
         if input_list:  # if this is a batch run with a list of user inputs available...
             choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
@@ -872,16 +962,19 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
         print("\nCreating table\n")  # status update so user knows that script is processing
 
         # if pathway tables needs to be generated and some genes have been filtered
-        if (choice == '2' or choice == '3') and len(_gene_list) != _total_genes:
+        if (choice in ['2', '3']) and len(_gene_list) != _total_genes:
             # trims _pathway_list to remove pathways where with no associated genes (were removed in filter)
             _pathway_list[:] = [pathway for pathway in _pathway_list if pathway.check_genes(_gene_list)]
 
         if choice == '1':
             out_HTML(html_file = custom_name, pathway_table = False)  # generates only the genes table
+            out_txt(output_file=custom_name)
         elif choice == '2':
             out_HTML(html_file = custom_name)  # generates both genes and pathways tables, and run next menu to set html file name
+            out_txt(output_file=custom_name)
         elif choice == '3':
             out_HTML(html_file = custom_name, gene_table = False)  # generates only the pathways table
+            out_txt(output_file=custom_name)
         elif choice == '4':
             out_txt(output_file = custom_name)
         else:
