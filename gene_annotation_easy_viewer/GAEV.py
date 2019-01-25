@@ -151,6 +151,10 @@ class Pathway_MAP:  # class for pathway map objects
         is_there = bool(set(self.genes_invol) & set(k_code))  # tests for common items between genes_invol and k_code
         return is_there
 
+    def __eq__(self, other):  # overrides the implementation of the equal operator
+        if isinstance(other, Pathway_MAP):  # checks if the other object is even a Pathway_MAP
+            return self.map_code == other.map_code  # when comparing Pathway_MAP, the map codes will be compared
+        return False  # if the other object is not a Pathway_MAP object, then return FALSE
 
 class Gene:  # class for gene objects
     def __init__(self,ig_num, ik_code):  # accepts the gene number and the KEGG's k code for the gene
@@ -634,8 +638,8 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
     def menu_data(self):  # first menu that will ask whether to create new data file or use a pre-existing one
         print(textwrap.dedent("""
                                  Would you like to:
-                                    1) Create a generate a new data file and table from a new dataset of KO numbers
-                                    2) Create a generate a new data file and table from a new dataset of KO numbers (Batch)
+                                    1) Create a new data file and generate a table from a new dataset of KO numbers
+                                    2) Create a new data file and generate a table from a new dataset of KO numbers (Batch)
                                     3) Generate a new table from an existing data file
                                     4) Generate a new table from an existing data file (Batch)
                                 """))  # displays options for
