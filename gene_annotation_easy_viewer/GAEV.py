@@ -138,6 +138,7 @@ class Pathway_MAP:  # class for pathway map objects
 
     def add_gene(self, ik_code):
         bisect.insort(self.genes_invol, ik_code)  # add a gene to pathway and keeps gene ordered by k_code
+        self.genes_invol = list(set(self.genes_invol))
 
     def generate_url(self, ik_code):  # generates base url from ko code of pathway and k code of genes involved and selected gene
         self.url = "http://www.kegg.jp/kegg-bin/show_pathway?map=" + self.map_code + "&multi_query="  # sets the which pathway to use
@@ -164,9 +165,10 @@ class Gene:  # class for gene objects
         self.name = infoList[0]  # sets gene name
         self.definition = infoList[1]  # sets gene definition
         self.link_path = infoList[2]  # sets pathways that gene is involved in [map_code, map_name, map_code, map_name ...]
+        self.log2foldchange = 0.0  # sets variable to be used in differential expression analysis
 
     def format_pathway_info(self, ipathway_info):  # accepts line from gene's "get" site from KEGG
-        ipathway_info = "map" + ipathway_info[2:]  # replaces the 'ko' prefix with 'map' prefix
+        # ipathway_info = "map" + ipathway_info[2:]  # line removed  since KEGG updated prefix to be 'map' instead of 'ko'
         return ipathway_info
 
     def get_info(self):  # accepts a k code and returns a list with name first then description then associated map codes
@@ -181,20 +183,20 @@ class Gene:  # class for gene objects
         for line in info_url.splitlines():  # splits string by line
             if not linkPathList:  # pythonic way to check if code reached pathway yet, if it has then go to else
                 column = line.split(None, 1)  # split line only once at first space to create two columns
-                if column[0] == 'NAME':  # checks first column to see if it is a name by checking first column
-                    # ex line: NAME ITPR1
+                if column[0] == 'SYMBOL':  # checks first column to see if it is a name by checking first column
+                    # ex line: SYMBOL ITPR1
                     infoList.append(column[1])  # adds second column (actual name) to infoList; always first
-                if column[0] == 'DEFINITION':  # checks first column to see if it is a definition by checking first column
-                    # ex line: DEFINITION inositol 1,4,5-tripohsphate receptor type 1
+                if column[0] == 'NAME':  # checks first column to see if it is a definition by checking first column
+                    # ex line: NAME inositol 1,4,5-tripohsphate receptor type 1
                     infoList.append(column[1])  # adds second column (definition) to infoList; always second
                 if column[0] == 'PATHWAY':  # checks first column to see if list of pathways is starting by checking first column
-                    # ex line: Pathway ko04020 Calcium signaling pathway
+                    # ex line: Pathway map04020 Calcium signaling pathway
                     linkPathList.append(self.format_pathway_info(column[1]))  # adds formatted pathway info to linkPathList
             else:  # if started adding linked pathways, just keep with the chug and plug
                 line = line.lstrip()  # strips all the blank spaces from the beginning of the line
-                if line[:2] == "ko":  # checks if first two characters is ko to comfirm still on pathway
+                if line.startswith("map"):  # checks if first characters is 'map' to comfirm still on pathway
                     linkPathList.append(self.format_pathway_info(line))  # adds formatted pathway info in linkPathList
-                    # ex line: ko00010  Glycolysis / Gluconeogenesis
+                    # ex line: map00010  Glycolysis / Gluconeogenesis
                 else:  # after all pathways are added
                     break  # break out of for loop because there is no reason to keep checking file
         infoList.append(linkPathList)  # add linkPathList to infoList
@@ -245,7 +247,7 @@ def trim_unannotated(path = None):
         file_name, file_no_ext = get_file_name(abs_path)  # gets file name (w/ and w/o ext) without the directory  path
         trimmed_file = os.path.join(file_dir, "trimmed_" + file_name)  # create path for trimmed file with dir and file name
     try:
-        with open(path, 'rU') as gene_list:  # opens specified path of input file to read
+        with open(path, 'r') as gene_list:  # opens specified path of input file to read
             with open(trimmed_file, 'w+') as output_file:  # creates a new trimmed file write in
                 for line in gene_list:
                     CurrGene = line.split()
@@ -619,7 +621,7 @@ def out_txt(output_file = None):
     pathwayList = _pathway_list  # store pathway data in this List
 
     with open(output_file, "w") as f:
-        f.write("GeneID\tGene_Name\tDefinition\n")
+        f.write("GeneID\tSymbol\tDefinition\n")
         for gene in geneList:
             line = str(gene.gene_num) + "\t" + str(gene.name) + "\t" + str(gene.definition) + "\t"
             for m_code in gene.link_path:  # cycles through each map code for pathways linked to gene
@@ -639,17 +641,17 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
         print(textwrap.dedent("""
                                  Would you like to:
                                     1) Create a new data file and generate a table from a new dataset of KO numbers
-                                    2) Create a new data file and generate a table from a new dataset of KO numbers (Batch)
-                                    3) Generate a new table from an existing data file
+                                    2) Generate a new table from an existing data file
+                                    3) Create a new data file and generate a table from a new dataset of KO numbers (Batch)
                                     4) Generate a new table from an existing data file (Batch)
                                 """))  # displays options for
         choice = input("Input a digit for your choice: ")  # ask user for input as a single digit
         if choice == '1':  # if user chose '1'
             self.menu_data_new()  # then initiate menu branch for creating data file and html table from new dataset
         elif choice == '2':  # if user chose '2'
-            self.menu_batch_list(data = False)  # then initiate menu branch for processing multiple input files at once
-        elif choice == '3':  # if user chose '3'
             self.menu_data_existing()  # then initiate menu branch that just generates html table from pre-existing data file
+        elif choice == '3':  # if user chose '3'
+            self.menu_batch_list(data=False)  # then initiate menu branch for processing multiple input files at once
         elif choice == '4':  # if user chose '4'
             self.menu_batch_list(data = True)  # then initiate menu branch for processing multiple data files at once
         else:  # if input was not 1 or 2, then ask again
@@ -948,12 +950,11 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
 
         print(textwrap.dedent("""
                                  Would you like to:
-                                    1) Generate a table of genes (HTML + txt)
-                                    2) Generate a table of genes and pathways (HTML + txt)
+                                    1) Generate a table of genes and pathways (HTML + txt)
+                                    2) Generate a table of genes (HTML + txt)
                                     3) Generate a table of pathways (HTML + txt)
-                                    4) Generate a only a table of genes without links to pathway maps (txt, tab-delimited, small size)
                                     
-                                    Note: The txt file is tab delimited and easily manipulated in text editors, but does not contain embedded links.
+                                    Note: Option 1 is recommended. Embedded links are in the HTML file which can be opened by most browsers.
                                  """))
         if input_list:  # if this is a batch run with a list of user inputs available...
             choice = input_list.pop(0)  # use the choice from the user input list instead of prompting a new input
@@ -966,21 +967,19 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
         print("\nCreating table\n")  # status update so user knows that script is processing
 
         # if pathway tables needs to be generated and some genes have been filtered
-        if (choice in ['2', '3']) and len(_gene_list) != _total_genes:
+        if (choice in ['1', '3']) and len(_gene_list) != _total_genes:
             # trims _pathway_list to remove pathways where with no associated genes (were removed in filter)
             _pathway_list[:] = [pathway for pathway in _pathway_list if pathway.check_genes(_gene_list)]
 
         if choice == '1':
-            out_HTML(html_file = custom_name, pathway_table = False)  # generates only the genes table
+            out_HTML(html_file=custom_name)  # generates both genes and pathways tables, and run next menu to set html file name
             out_txt(output_file=custom_name)
         elif choice == '2':
-            out_HTML(html_file = custom_name)  # generates both genes and pathways tables, and run next menu to set html file name
+            out_HTML(html_file=custom_name, pathway_table=False)  # generates only the genes table
             out_txt(output_file=custom_name)
         elif choice == '3':
             out_HTML(html_file = custom_name, gene_table = False)  # generates only the pathways table
             out_txt(output_file=custom_name)
-        elif choice == '4':
-            out_txt(output_file = custom_name)
         else:
             print("Not a valid choice")
             self.menu_table_type()
