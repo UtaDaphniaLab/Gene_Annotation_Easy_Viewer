@@ -34,6 +34,9 @@ After the first time an input file has been processed, all the information extra
 GAEV will output tables in HTML files. Users may choose between a gene-centric table, a pathway-centric table, or both. Users may also apply filters to the data, so that tables will be generated with only genes that contain a target term in its name, definition, or list of linked pathways. Each item in the associated pathway column of the table is an embedded url that will take the user to the pathway map on KEGG. Genes on the pathway map that were present in the original input file's genome assembly will be displayed in green. Meanwhile, the target gene is displayed in red to be easily distinguishable.  
 An example output file can be found in the gene_annotation_easy_viewer folder. It was produced using the example input file, choosing not to apply any filters, and choosing to display both genes and pathway tables.
 
+### Color Pathways
+This new function allows users color any number of gene lists on KEGG pathways with different colors. It is complete with UI that can be accessed from the first menu by selecting option 5. Requires a dat file from a previous GAEV run to function. This function takes lists of user defined gene ids (gene ids must match with the GAEV dat file) with each gene seperated by new lines. Each list of genes can be colored with a different hue. Common colors can be specified with the color name (ex. "red") or or with hex codes (ex. "#FF0000"). Output is an HTML file with a hyperlink to each pathway similar to the standard GAEV output. Example input and output files for this function have been included [here](https://github.com/UtaDaphniaLab/Gene_Annotation_Easy_Viewer/tree/master/gene_annotation_easy_viewer/Color%20Pathways%20Example%20Inputs%20Outputs)
+
 ## Authors
 **Trung Huynh** - *Initial work on code*  
 **Sen Xu** - *Conceptualization*
