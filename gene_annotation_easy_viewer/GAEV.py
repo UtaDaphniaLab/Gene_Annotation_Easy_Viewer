@@ -8,6 +8,10 @@ import bisect  # module needed to insert an item into a sorted list
 import pickle  # needed to save and load data
 import sys  # needed to exit out of program when error is encountered
 import re  # required to split files without removing delimiter
+import copy
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog
+from tkinter import *
 
 ############ Variables ############
 _input_file = "No_File_Specified"  # will store path of the input file
@@ -644,6 +648,7 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                                     2) Generate a new table from an existing data file
                                     3) Create a new data file and generate a table from a new dataset of KO numbers (Batch)
                                     4) Generate a new table from an existing data file (Batch)
+                                    5) Color pathways from an existing data file
                                 """))  # displays options for
         choice = input("Input a digit for your choice: ")  # ask user for input as a single digit
         if choice == '1':  # if user chose '1'
@@ -654,6 +659,8 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
             self.menu_batch_list(data=False)  # then initiate menu branch for processing multiple input files at once
         elif choice == '4':  # if user chose '4'
             self.menu_batch_list(data = True)  # then initiate menu branch for processing multiple data files at once
+        elif choice == '5':  # if user chose '5'
+            self.menu_color_pathways()  # then initiate UI for annotation genes in pathways with color
         else:  # if input was not 1 or 2, then ask again
             print("Not a valid choice")
             self.menu_data()
@@ -767,6 +774,13 @@ class UI:  # class to wrap all the menu screens that will help user navigate the
                 self.menu_data_existing(data_file = file, input_list = temp_inputs)
             else:
                 self.menu_data_new(input_file = file, input_list = temp_inputs)
+
+    def menu_color_pathways(self):
+        import Color_Pathways
+        Pathway_MAP.generate_url = Color_Pathways._new_generate_url  # overrides the generate_url method to include unique color value
+        root = tk.Tk()
+        ui = Color_Pathways.UI(root)
+
 
     def menu_filters(self, batch_ask = False, input_list = None, filter_batch_run = False):  # ask whether user would like to filter data
         filter_present = len(_gene_list) != _total_genes  # determines whether a filter is present
