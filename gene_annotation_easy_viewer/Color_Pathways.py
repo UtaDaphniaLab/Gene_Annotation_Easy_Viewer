@@ -38,13 +38,12 @@ def load_full_annotation(data_file_path_full):
             pathway_info_full[pathway.map_code] = pathway  # loads data into pathway_info_1
 
 
-# will simply read file and return list with each striped line on an element replacing the gene prefix with mRNA to
-# match the gene id stored on GAEV output
+# will simply read file and return list with each striped line on an element
 def load_set(set_input_path):
     output_list = []
     with open(set_input_path, 'r') as f:
         for line in f:
-            output_list.append('mRNA' + line.strip()[4:])  # strip to remove unexpected blank spaces / new lines
+            output_list.append(line.strip())  # strip to remove unexpected blank spaces / new lines
 
     return output_list
 
@@ -96,7 +95,6 @@ def generate_color_hex_dict():
             for color in sets_to_highlight.keys():
                 if gene.gene_num in sets_to_highlight[color]:
                     color_list.append(color)
-                    break  # breaks since each gene should only be associated with one highlight color
 
         # will blend all colors from all genes associated with the k_code
         # ex. blue + red = purple; it is weighted by occurrence of color blue + 3 red = dark pink
